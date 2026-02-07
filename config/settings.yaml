@@ -21,6 +21,22 @@ devices:
 
 monitoring:
   dashboard_port: 8080
+  pipeline_port: 8081
+  metrics_enabled: true
+
+# Database configuration (TimescaleDB)
+database:
+  host: "localhost"
+  port: 5432
+  name: "openpipe_data"
+  user: "openpipe"
+  password: "openpipe"
+
+# Data pipeline configuration
+pipeline:
+  batch_size: 100
+  flush_interval_seconds: 5
+  consumer_group: "data-pipeline"
 
 # GPS route configurations
 gps_routes:

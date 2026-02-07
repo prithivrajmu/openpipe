@@ -470,3 +470,123 @@ async def get_kafka_stats():
     """Get Kafka producer statistics."""
     manager = get_device_manager()
     return manager.kafka_producer.get_stats()
+
+
+# =============================================================================
+# HEALTH MONITORING ENDPOINTS
+# =============================================================================
+
+@app.get("/health")
+async def health_check():
+    """Comprehensive health check for the virtual device simulator."""
+    try:
+        manager = get_device_manager()
+        collector = get_metrics_collector()
+        
+        kafka_stats = manager.kafka_producer.get_stats()
+        metrics_summary = collector.get_summary()
+        
+        # Check Kafka connectivity
+        kafka_healthy = kafka_stats.get("connected", False)
+        
+        # Check if devices are producing data
+        devices_healthy = metrics_summary.get("total_devices", 0) > 0
+        
+        overall_healthy = kafka_healthy and devices_healthy
+        
+        return {
+            "status": "healthy" if overall_healthy else "degraded",
+            "service": "virtual-device-simulator",
+            "components": {
+                "kafka_producer": {
+                    "status": "healthy" if kafka_healthy else "unhealthy",
+                    "connected": kafka_stats.get("connected", False),
+                    "messages_sent": kafka_stats.get("messages_sent", 0),
+                    "errors": kafka_stats.get("errors", 0)
+                },
+                "devices": {
+                    "status": "healthy" if devices_healthy else "degraded",
+                    "total_devices": metrics_summary.get("total_devices", 0),
+                    "total_data_points": metrics_summary.get("total_data_points", 0),
+                    "uptime_seconds": metrics_summary.get("uptime_seconds", 0)
+                }
+            }
+        }
+    except Exception as e:
+        return {
+            "status": "unhealthy",
+            "error": str(e)
+        }
+
+
+@app.get("/health/live")
+async def liveness_probe():
+    """Simple liveness probe - returns alive if the service is running."""
+    return {"status": "alive"}
+
+
+@app.get("/health/ready")
+async def readiness_probe():
+    """Readiness probe - checks if the service can handle requests."""
+    try:
+        manager = get_device_manager()
+        kafka_connected = manager.kafka_producer.is_connected()
+        
+        return {
+            "status": "ready" if kafka_connected else "not_ready",
+            "kafka_connected": kafka_connected
+        }
+    except Exception as e:
+        return {
+            "status": "not_ready",
+            "error": str(e)
+        }
+
+
+@app.get("/metrics")
+async def prometheus_metrics():
+    """Export metrics in Prometheus format."""
+    try:
+        manager = get_device_manager()
+        collector = get_metrics_collector()
+        
+        kafka_stats = manager.kafka_producer.get_stats()
+        summary = collector.get_summary()
+        
+        metrics_text = f"""# HELP virtual_devices_total Total number of active virtual devices
+# TYPE virtual_devices_total gauge
+virtual_devices_total {summary.get('total_devices', 0)}
+
+# HELP virtual_devices_data_points_total Total data points generated
+# TYPE virtual_devices_data_points_total counter
+virtual_devices_data_points_total {summary.get('total_data_points', 0)}
+
+# HELP virtual_devices_bad_data_points_total Total bad data points generated
+# TYPE virtual_devices_bad_data_points_total counter
+virtual_devices_bad_data_points_total {summary.get('total_bad_data_points', 0)}
+
+# HELP virtual_devices_uptime_seconds Uptime in seconds
+# TYPE virtual_devices_uptime_seconds gauge
+virtual_devices_uptime_seconds {summary.get('uptime_seconds', 0)}
+
+# HELP kafka_producer_messages_sent_total Total messages sent to Kafka
+# TYPE kafka_producer_messages_sent_total counter
+kafka_producer_messages_sent_total {kafka_stats.get('messages_sent', 0)}
+
+# HELP kafka_producer_errors_total Total Kafka producer errors
+# TYPE kafka_producer_errors_total counter
+kafka_producer_errors_total {kafka_stats.get('errors', 0)}
+
+# HELP kafka_producer_connected Kafka producer connection status
+# TYPE kafka_producer_connected gauge
+kafka_producer_connected {1 if kafka_stats.get('connected', False) else 0}
+"""
+        from fastapi.responses import PlainTextResponse
+        return PlainTextResponse(content=metrics_text, media_type="text/plain")
+    except Exception as e:
+        from fastapi.responses import PlainTextResponse
+        return PlainTextResponse(
+            content=f"# Error fetching metrics: {e}\n", 
+            media_type="text/plain"
+        )
+

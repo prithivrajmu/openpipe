@@ -1,0 +1,24 @@
+FROM quay.io/sclorg/postgresql-15-c9s:latest
+
+USER root
+
+# Add TimescaleDB repository (CentOS 9 Stream)
+RUN tee /etc/yum.repos.d/timescale_timescaledb.repo <<EOF
+[timescale_timescaledb]
+name=timescale_timescaledb
+baseurl=https://packagecloud.io/timescale/timescaledb/el/9/\$basearch
+repo_gpgcheck=1
+gpgcheck=0
+enabled=1
+gpgkey=https://packagecloud.io/timescale/timescaledb/gpgkey
+sslverify=1
+sslcacert=/etc/pki/tls/certs/ca-bundle.crt
+metadata_expire=300
+EOF
+
+# Install TimescaleDB
+RUN dnf install -y timescaledb-2-postgresql-15 && \
+    dnf clean all
+
+# Switch back to postgres user
+USER 1001

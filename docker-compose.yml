@@ -1,0 +1,26 @@
+services:
+  kafka:
+    image: quay.io/strimzi/kafka:latest-kafka-3.7.0
+    hostname: kafka
+    container_name: kafka
+    command: [ "sh", "-c", "bin/kafka-storage.sh format -t MkU3OEVBNTcwNTJENDM2Qk -c config/kraft/server.properties && bin/kafka-server-start.sh config/kraft/server.properties --override listeners=PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093 --override advertised.listeners=PLAINTEXT://localhost:9092 --override listener.security.protocol.map=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT --override controller.quirum.voters=1@kafka:9093" ]
+    ports:
+      - "9092:9092"
+    environment:
+      LOG_DIR: "/tmp/logs"
+    healthcheck:
+      test: [ "CMD-SHELL", "bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092" ]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+  # kafka-ui:
+  #   image: provectuslabs/kafka-ui:latest
+  #   container_name: kafka-ui
+  #   depends_on:
+  #     kafka:
+  #       condition: service_healthy
+  #   ports:
+  #     - "8081:8080"
+  #   environment:
+  #     KAFKA_CLUSTERS_0_NAME: local
+  #     KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092

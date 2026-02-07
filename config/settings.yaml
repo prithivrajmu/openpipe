@@ -1,0 +1,42 @@
+kafka:
+  bootstrap_servers: "localhost:9092"
+  topics:
+    wearables: "virtual-wearables"
+    restaurants: "virtual-restaurants"
+    gps: "virtual-gps"
+
+devices:
+  wearables:
+    count: 5
+    frequency_seconds: 2
+    bad_data_probability: 0.05
+  restaurants:
+    count: 3
+    frequency_seconds: 5
+    bad_data_probability: 0.03
+  gps:
+    count: 10
+    frequency_seconds: 1
+    bad_data_probability: 0.02
+
+monitoring:
+  dashboard_port: 8080
+
+# GPS route configurations
+gps_routes:
+  bangalore:
+    waypoints:
+      - [12.9716, 77.5946]   # MG Road
+      - [12.9352, 77.6245]   # Koramangala
+      - [12.9698, 77.7500]   # Whitefield
+      - [13.0358, 77.5970]   # Hebbal
+  mumbai:
+    waypoints:
+      - [19.0760, 72.8777]   # Gateway of India
+      - [19.1136, 72.8697]   # Bandra
+      - [19.2183, 72.9781]   # Thane
+  delhi:
+    waypoints:
+      - [28.6139, 77.2090]   # Connaught Place
+      - [28.5355, 77.2410]   # Nehru Place
+      - [28.6692, 77.4538]   # Noida

@@ -1,0 +1,8 @@
+kafka-python>=2.0.2
+pyyaml>=6.0
+fastapi>=0.109.0
+uvicorn>=0.27.0
+faker>=22.0.0
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+jinja2>=3.1.0

@@ -124,3 +124,72 @@ devices:
   {device_type}:
     frequency_seconds: 2.0
 ```
+
+---
+
+## Flink Stream Processor
+
+### Overview
+The `flink_processor` module provides real-time stream processing with windowed aggregations for health metrics:
+- **Heart Rate**: 1-minute tumbling window with elevated HR alerts (>100 bpm)
+- **Blood Pressure**: 1-minute tumbling window with elevated BP alerts (≥140/90 mmHg)
+- **Blood Sugar**: 10-minute tumbling window with elevated sugar alerts (≥180 mg/dL)
+
+### Running the Processor
+```bash
+# Standalone Python processor (no Flink cluster needed)
+uv run python -m flink_processor.main --config config/settings.yaml
+
+# Or with PyFlink (requires Flink cluster)
+uv run python -m flink_processor.health_stream_job --config config/settings.yaml
+```
+
+### Configuration
+Edit `config/settings.yaml`:
+```yaml
+flink:
+  enabled: true
+  windows:
+    heart_rate_minutes: 1
+    blood_pressure_minutes: 1
+    blood_sugar_minutes: 10
+  thresholds:
+    elevated_heart_rate: 100      # bpm
+    elevated_bp_systolic: 140     # mmHg
+    elevated_bp_diastolic: 90     # mmHg
+    elevated_blood_sugar: 180     # mg/dL
+```
+
+### Database Tables
+- `health_metrics_1min`: Heart rate and BP aggregations
+- `health_metrics_10min`: Blood sugar aggregations
+- `health_alerts`: Elevated reading alerts
+
+### Testing
+```bash
+# Run Flink processor tests
+uv run python -m pytest flink_processor/tests/test_processor.py -v
+```
+
+---
+
+## File Structure Conventions
+
+```
+openpipe/
+├── config/           # YAML configuration files
+├── virtual_devices/
+│   ├── simulators/   # Device simulator implementations
+│   ├── tests/        # Test modules
+│   ├── main.py       # Entry point
+│   └── dashboard.py  # FastAPI dashboard
+├── data_pipeline/    # Kafka consumer + TimescaleDB writer
+├── flink_processor/  # Stream processing with windowing
+│   ├── main.py       # Standalone Python processor
+│   ├── health_stream_job.py  # PyFlink job
+│   ├── config.py     # Configuration classes
+│   ├── sinks.py      # Database sinks
+│   └── tests/        # Unit tests
+└── .agent/workflows/ # Agent workflow definitions
+```
+

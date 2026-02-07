@@ -56,3 +56,18 @@ gps_routes:
       - [28.6139, 77.2090]   # Connaught Place
       - [28.5355, 77.2410]   # Nehru Place
       - [28.6692, 77.4538]   # Noida
+
+# Flink stream processor configuration
+flink:
+  enabled: true
+  consumer_group: "flink-health-processor"
+  windows:
+    heart_rate_minutes: 1
+    blood_pressure_minutes: 1
+    blood_sugar_minutes: 10
+  thresholds:
+    elevated_heart_rate: 100      # bpm
+    elevated_bp_systolic: 140     # mmHg
+    elevated_bp_diastolic: 90     # mmHg
+    elevated_blood_sugar: 180     # mg/dL
+

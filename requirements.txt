@@ -10,3 +10,4 @@ psycopg2-binary>=2.9.9
 sqlalchemy>=2.0.0
 prometheus-client>=0.19.0
 httpx>=0.26.0
+apache-flink>=1.18.0

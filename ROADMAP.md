@@ -71,5 +71,5 @@
 
 - **Kubernetes Helm Chart**: Production-grade deployment
 - **Cloud Connectors**: Direct integration with AWS Kinesis, Azure Event Hubs
-- **Flink Cluster Mode**: Distributed stream processing
+- [x] ~~**Flink Cluster Mode**: Distributed stream processing~~
 

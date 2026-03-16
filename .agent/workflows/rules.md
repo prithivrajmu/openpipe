@@ -130,18 +130,20 @@ devices:
 ## Flink Stream Processor
 
 ### Overview
-The `flink_processor` module provides real-time stream processing with windowed aggregations for health metrics:
+The `flink_processor` module uses **Apache Flink (PyFlink)** for real-time stream processing with windowed aggregations:
 - **Heart Rate**: 1-minute tumbling window with elevated HR alerts (>100 bpm)
 - **Blood Pressure**: 1-minute tumbling window with elevated BP alerts (≥140/90 mmHg)
 - **Blood Sugar**: 10-minute tumbling window with elevated sugar alerts (≥180 mg/dL)
 
+Jobs are submitted to the Flink cluster (JobManager + TaskManager) via the PyFlink DataStream API.
+
 ### Running the Processor
 ```bash
-# Standalone Python processor (no Flink cluster needed)
+# Default: submits a PyFlink job to the Flink cluster
 uv run python -m flink_processor.main --config config/settings.yaml
 
-# Or with PyFlink (requires Flink cluster)
-uv run python -m flink_processor.health_stream_job --config config/settings.yaml
+# Fallback: standalone Python processor (no Flink cluster needed)
+uv run python -m flink_processor.main --config config/settings.yaml --standalone
 ```
 
 ### Configuration
@@ -149,6 +151,9 @@ Edit `config/settings.yaml`:
 ```yaml
 flink:
   enabled: true
+  execution_mode: "local"          # "local" (mini-cluster) or "remote" (Flink cluster)
+  jobmanager_host: "localhost"
+  jobmanager_port: 8083
   windows:
     heart_rate_minutes: 1
     blood_pressure_minutes: 1
@@ -161,7 +166,7 @@ flink:
 ```
 
 ### Database Tables
-- `health_metrics_1min`: Heart rate and BP aggregations
+- `health_metrics_1min`: Heart rate and BP aggregations (generic schema: `time`, `metric_type`, `avg_value`)
 - `health_metrics_10min`: Blood sugar aggregations
 - `health_alerts`: Elevated reading alerts
 
@@ -184,11 +189,11 @@ openpipe/
 │   ├── main.py       # Entry point
 │   └── dashboard.py  # FastAPI dashboard
 ├── data_pipeline/    # Kafka consumer + TimescaleDB writer
-├── flink_processor/  # Stream processing with windowing
-│   ├── main.py       # Standalone Python processor
-│   ├── health_stream_job.py  # PyFlink job
+├── flink_processor/  # PyFlink stream processing
+│   ├── main.py       # CLI entry point (PyFlink default, --standalone fallback)
+│   ├── health_stream_job.py  # PyFlink DataStream job + SinkFunction
 │   ├── config.py     # Configuration classes
-│   ├── sinks.py      # Database sinks
+│   ├── sinks.py      # Database sinks + schema init
 │   └── tests/        # Unit tests
 └── .agent/workflows/ # Agent workflow definitions
 ```

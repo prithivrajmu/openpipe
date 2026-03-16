@@ -1,7 +1,7 @@
 """
 Tests for the Health Metrics Flink Processor.
 
-Tests windowed aggregations and alert generation logic.
+Tests windowed aggregations, alert generation, and configuration logic.
 """
 
 import json
@@ -17,13 +17,16 @@ from flink_processor.config import FlinkConfig, WindowConfig, ThresholdConfig
 
 class TestFlinkConfig:
     """Tests for configuration loading."""
-    
+
     def test_default_config(self):
         """Test default configuration values."""
         config = FlinkConfig()
-        
+
         assert config.kafka_bootstrap_servers == "localhost:9092"
         assert config.kafka_topic == "virtual-wearables"
+        assert config.execution_mode == "remote"
+        assert config.jobmanager_host == "localhost"
+        assert config.jobmanager_port == 8083
         assert config.windows.heart_rate_minutes == 1
         assert config.windows.blood_pressure_minutes == 1
         assert config.windows.blood_sugar_minutes == 10
@@ -31,7 +34,7 @@ class TestFlinkConfig:
         assert config.thresholds.elevated_bp_systolic == 140
         assert config.thresholds.elevated_bp_diastolic == 90
         assert config.thresholds.elevated_blood_sugar == 180
-    
+
     def test_jdbc_url_generation(self):
         """Test JDBC URL is correctly generated."""
         config = FlinkConfig(
@@ -41,37 +44,60 @@ class TestFlinkConfig:
         )
         assert config.jdbc_url == "jdbc:postgresql://testhost:5433/testdb"
 
+    def test_flink_rest_url(self):
+        """Test Flink REST URL is correctly generated."""
+        config = FlinkConfig(
+            jobmanager_host="flink-master",
+            jobmanager_port=9090,
+        )
+        assert config.flink_rest_url == "http://flink-master:9090"
+
+    def test_from_yaml(self):
+        """Test loading configuration from YAML file."""
+        config = FlinkConfig.from_yaml("config/settings.yaml")
+
+        assert config.kafka_bootstrap_servers == "localhost:9092"
+        assert config.kafka_topic == "virtual-wearables"
+        assert config.execution_mode == "local"
+        assert config.jobmanager_host == "localhost"
+        assert config.jobmanager_port == 8083
+
+    def test_from_yaml_missing_file(self):
+        """Test loading from a nonexistent YAML file returns defaults."""
+        config = FlinkConfig.from_yaml("/nonexistent/path.yaml")
+        assert config.execution_mode == "remote"  # default
+
 
 class TestHeartRateAggregation:
     """Tests for heart rate windowed aggregation."""
-    
+
     def test_normal_heart_rate_no_alert(self):
         """Test normal heart rate does not generate alert."""
         readings = [75, 80, 78, 82, 77]
         avg = sum(readings) / len(readings)
         threshold = 100
-        
+
         assert avg <= threshold
         assert avg == 78.4
-    
+
     def test_elevated_heart_rate_generates_alert(self):
         """Test elevated heart rate generates warning alert."""
         readings = [105, 110, 108, 112, 106]
         avg = sum(readings) / len(readings)
         threshold = 100
-        
+
         assert avg > threshold
         assert avg == 108.2
-        
+
         severity = "warning" if avg < 120 else "critical"
         assert severity == "warning"
-    
+
     def test_critical_heart_rate_alert(self):
         """Test very high heart rate generates critical alert."""
         readings = [125, 130, 128, 135, 132]
         avg = sum(readings) / len(readings)
         threshold = 100
-        
+
         assert avg > threshold
         severity = "warning" if avg < 120 else "critical"
         assert severity == "critical"
@@ -79,47 +105,47 @@ class TestHeartRateAggregation:
 
 class TestBloodPressureAggregation:
     """Tests for blood pressure windowed aggregation."""
-    
+
     def test_normal_bp_no_alert(self):
         """Test normal blood pressure does not generate alert."""
         systolic = [120, 118, 122, 119, 121]
         diastolic = [80, 78, 82, 79, 81]
-        
+
         avg_sys = sum(systolic) / len(systolic)
         avg_dia = sum(diastolic) / len(diastolic)
-        
+
         sys_threshold = 140
         dia_threshold = 90
-        
+
         has_alert = avg_sys >= sys_threshold or avg_dia >= dia_threshold
         assert not has_alert
-    
+
     def test_elevated_systolic_generates_alert(self):
         """Test elevated systolic BP generates alert."""
         systolic = [145, 148, 142, 150, 146]
         diastolic = [80, 78, 82, 79, 81]
-        
+
         avg_sys = sum(systolic) / len(systolic)
         avg_dia = sum(diastolic) / len(diastolic)
-        
+
         sys_threshold = 140
         dia_threshold = 90
-        
+
         has_alert = avg_sys >= sys_threshold or avg_dia >= dia_threshold
         assert has_alert
         assert avg_sys >= sys_threshold
-    
+
     def test_elevated_diastolic_generates_alert(self):
         """Test elevated diastolic BP generates alert."""
         systolic = [120, 118, 122, 119, 121]
         diastolic = [92, 95, 91, 94, 93]
-        
+
         avg_sys = sum(systolic) / len(systolic)
         avg_dia = sum(diastolic) / len(diastolic)
-        
+
         sys_threshold = 140
         dia_threshold = 90
-        
+
         has_alert = avg_sys >= sys_threshold or avg_dia >= dia_threshold
         assert has_alert
         assert avg_dia >= dia_threshold
@@ -127,42 +153,42 @@ class TestBloodPressureAggregation:
 
 class TestBloodSugarAggregation:
     """Tests for blood sugar windowed aggregation."""
-    
+
     def test_normal_blood_sugar_no_alert(self):
         """Test normal blood sugar does not generate alert."""
         readings = [95, 100, 98, 105, 92]
         avg = sum(readings) / len(readings)
         threshold = 180
-        
+
         assert avg < threshold
         assert not (avg >= threshold)
-    
+
     def test_elevated_blood_sugar_generates_alert(self):
         """Test elevated blood sugar generates alert."""
         readings = [185, 190, 182, 195, 188]
         avg = sum(readings) / len(readings)
         threshold = 180
-        
+
         assert avg >= threshold
-        
+
         severity = "warning" if avg < 250 else "critical"
         assert severity == "warning"
-    
+
     def test_critical_blood_sugar_alert(self):
         """Test very high blood sugar generates critical alert."""
         readings = [260, 270, 255, 280, 265]
         avg = sum(readings) / len(readings)
         threshold = 180
-        
+
         assert avg >= threshold
-        
+
         severity = "warning" if avg < 250 else "critical"
         assert severity == "critical"
 
 
 class TestMessageParsing:
     """Tests for Kafka message parsing."""
-    
+
     def test_parse_valid_wearable_message(self):
         """Test parsing a valid wearable message."""
         message = {
@@ -188,19 +214,19 @@ class TestMessageParsing:
                 }
             }
         }
-        
+
         raw = message["raw_data"]
-        
+
         hr = raw["heart_rate"]["value"]
         bp_sys = raw["blood_pressure"]["systolic"]
         bp_dia = raw["blood_pressure"]["diastolic"]
         sugar = raw["blood_sugar"]["value"]
-        
+
         assert hr == 72
         assert bp_sys == 120
         assert bp_dia == 80
         assert sugar == 95
-    
+
     def test_parse_bad_data_with_nulls(self):
         """Test parsing message with null values."""
         message = {
@@ -211,14 +237,14 @@ class TestMessageParsing:
                 "heart_rate": None
             }
         }
-        
+
         raw = message["raw_data"]
         hr = raw["heart_rate"]
         assert hr is None
-        
+
         is_valid = hr is not None and isinstance(hr, dict)
         assert not is_valid
-    
+
     def test_parse_bad_data_with_negative_values(self):
         """Test parsing message with negative (invalid) values."""
         message = {
@@ -229,34 +255,86 @@ class TestMessageParsing:
                 "blood_sugar": {"value": -100}
             }
         }
-        
+
         raw = message["raw_data"]
         hr = raw["heart_rate"]["value"]
-        
+
         is_valid = hr is not None and isinstance(hr, int) and hr > 0
         assert not is_valid
 
 
 class TestWindowLogic:
     """Tests for windowing logic."""
-    
+
     def test_one_minute_window_alignment(self):
         """Test that 1-minute windows are properly aligned."""
         now = datetime(2026, 2, 8, 10, 30, 45, tzinfo=timezone.utc)
-        
+
         window_start = now.replace(second=0, microsecond=0)
         window_end = window_start + timedelta(minutes=1)
-        
+
         assert window_start.second == 0
         assert window_start.microsecond == 0
         assert (window_end - window_start).total_seconds() == 60
-    
+
     def test_ten_minute_window_size(self):
         """Test that 10-minute windows have correct duration."""
         window_minutes = 10
         window_duration = timedelta(minutes=window_minutes)
-        
+
         assert window_duration.total_seconds() == 600
+
+
+class TestAggregationResultFormat:
+    """Tests for the aggregation result JSON format."""
+
+    def test_heart_rate_result_structure(self):
+        """Test that heart rate results have all required fields."""
+        result = {
+            "type": "heart_rate_1min",
+            "window_start": "2026-02-08T10:30:00",
+            "window_end": "2026-02-08T10:31:00",
+            "user_id": "user_123",
+            "avg_heart_rate": 85.5,
+            "min_heart_rate": 80,
+            "max_heart_rate": 92,
+            "reading_count": 10,
+        }
+        required_keys = [
+            "type", "window_start", "window_end", "user_id",
+            "avg_heart_rate", "min_heart_rate", "max_heart_rate",
+            "reading_count",
+        ]
+        for key in required_keys:
+            assert key in result
+
+        # Should serialize to valid JSON
+        json_str = json.dumps(result)
+        parsed = json.loads(json_str)
+        assert parsed["type"] == "heart_rate_1min"
+
+    def test_alert_result_structure(self):
+        """Test that alert results have all required fields."""
+        alert = {
+            "type": "elevated_heart_rate",
+            "value": 115.3,
+            "threshold": 100,
+            "severity": "warning",
+        }
+        result = {
+            "type": "heart_rate_1min",
+            "window_start": "2026-02-08T10:30:00",
+            "window_end": "2026-02-08T10:31:00",
+            "user_id": "user_123",
+            "avg_heart_rate": 115.3,
+            "min_heart_rate": 108,
+            "max_heart_rate": 122,
+            "reading_count": 5,
+            "alert": alert,
+        }
+        assert "alert" in result
+        assert result["alert"]["severity"] in ("warning", "critical")
+        assert result["alert"]["value"] > result["alert"]["threshold"]
 
 
 if __name__ == "__main__":

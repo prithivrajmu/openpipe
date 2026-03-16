@@ -50,6 +50,17 @@ services:
     command: jobmanager
     environment:
       - JOB_MANAGER_RPC_ADDRESS=jobmanager
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        taskmanager.numberOfTaskSlots: 4
+        parallelism.default: 1
+        classloader.resolve-order: parent-first
+        rest.flamegraph.enabled: true
+    volumes:
+      - flink_jars:/opt/flink/lib/extra
+      - ./flink_processor:/opt/flink/jobs/flink_processor:ro
+      - ./config:/opt/flink/jobs/config:ro
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:8081/jobs/overview" ]
       interval: 30s
@@ -65,7 +76,47 @@ services:
     command: taskmanager
     environment:
       - JOB_MANAGER_RPC_ADDRESS=jobmanager
-      - TASK_MANAGER_NUMBER_OF_TASK_SLOTS=4
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        taskmanager.numberOfTaskSlots: 4
+        classloader.resolve-order: parent-first
+    volumes:
+      - flink_jars:/opt/flink/lib/extra
+      - ./flink_processor:/opt/flink/jobs/flink_processor:ro
+      - ./config:/opt/flink/jobs/config:ro
+
+  # Init container to download Flink connector JARs
+  flink-jar-downloader:
+    image: curlimages/curl:latest
+    container_name: flink-jar-downloader
+    volumes:
+      - flink_jars:/jars
+    entrypoint: [ "sh", "-c" ]
+    command:
+      - |
+        echo "Downloading Flink Kafka connector JARs..."
+        cd /jars
+        if [ ! -f flink-connector-kafka-3.1.0-1.18.jar ]; then
+          curl -fSL -o flink-connector-kafka-3.1.0-1.18.jar \
+            "https://repo1.maven.org/maven2/org/apache/flink/flink-connector-kafka/3.1.0-1.18/flink-connector-kafka-3.1.0-1.18.jar"
+        fi
+        if [ ! -f kafka-clients-3.7.0.jar ]; then
+          curl -fSL -o kafka-clients-3.7.0.jar \
+            "https://repo1.maven.org/maven2/org/apache/kafka/kafka-clients/3.7.0/kafka-clients-3.7.0.jar"
+        fi
+        if [ ! -f flink-connector-jdbc-3.1.2-1.18.jar ]; then
+          curl -fSL -o flink-connector-jdbc-3.1.2-1.18.jar \
+            "https://repo1.maven.org/maven2/org/apache/flink/flink-connector-jdbc/3.1.2-1.18/flink-connector-jdbc-3.1.2-1.18.jar"
+        fi
+        if [ ! -f postgresql-42.7.1.jar ]; then
+          curl -fSL -o postgresql-42.7.1.jar \
+            "https://repo1.maven.org/maven2/org/postgresql/postgresql/42.7.1/postgresql-42.7.1.jar"
+        fi
+        echo "All JARs downloaded:"
+        ls -la /jars/
+    restart: "no"
 
 volumes:
   timescale_data:
+  flink_jars:

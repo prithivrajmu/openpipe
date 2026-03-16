@@ -1,6 +1,6 @@
 # OpenPipe - Virtual Device Simulator & Data Pipeline
 
-A Python-based platform for simulating IoT device data, streaming to Kafka, processing with windowed aggregations, and persisting to TimescaleDB.
+A Python-based platform for simulating IoT device data, streaming to Kafka, processing with Apache Flink (PyFlink), and persisting to TimescaleDB.
 
 ## Features
 
@@ -17,12 +17,15 @@ A Python-based platform for simulating IoT device data, streaming to Kafka, proc
 - **SQL Query UI**: Web interface for browsing tables and executing queries
 - **Health Monitoring**: Comprehensive health checks for all components
 
-### Stream Processing (Flink Processor)
+### Stream Processing (Apache Flink via PyFlink)
+- **Real Flink Cluster**: Jobs submitted to Flink JobManager + TaskManager
 - **Windowed Aggregations**: Tumbling windows for real-time metric computation
 - **Heart Rate Monitoring**: 1-minute windows with alerts when > 100 bpm
 - **Blood Pressure Monitoring**: 1-minute windows with alerts when ≥ 140/90 mmHg
 - **Blood Sugar Monitoring**: 10-minute windows with alerts when ≥ 180 mg/dL
 - **Alert Generation**: Automatic alerts for elevated health metrics
+- **JDBC Sink**: Aggregation results written directly to TimescaleDB
+- **Standalone Fallback**: `--standalone` flag for environments without Flink
 
 ## Architecture
 
@@ -34,26 +37,29 @@ A Python-based platform for simulating IoT device data, streaming to Kafka, proc
                                     │                          │
                                     │               ┌──────────▼──────────┐
                                     │               │ TimescaleDB (:5432) │
-                                    │               └─────────────────────┘
-                                    │
-                            ┌───────▼───────┐
-                            │ Flink Stream  │
-                            │ Processor     │
-                            └───────┬───────┘
-                                    │
-                    ┌───────────────┼───────────────┐
-                    ▼               ▼               ▼
-            ┌─────────────┐ ┌─────────────┐ ┌─────────────┐
-            │ HR Windows  │ │ BP Windows  │ │Sugar Windows│
-            │ (1 min)     │ │ (1 min)     │ │ (10 min)    │
-            └──────┬──────┘ └──────┬──────┘ └──────┬──────┘
-                   │               │               │
-                   └───────────────┼───────────────┘
-                                   ▼
-                           ┌─────────────┐
-                           │ Alerts +    │
-                           │ Aggregations│
-                           └─────────────┘
+                                    │               └──────────▲──────────┘
+                                    │                          │
+                            ┌───────▼───────┐                  │
+                            │ Flink Cluster  │                 │
+                            │  (:8083 UI)    │                 │
+                            │  JobManager    │                 │
+                            │  TaskManager   │                 │
+                            └───────┬───────┘                  │
+                                    │                          │
+                    ┌───────────────┼───────────────┐          │
+                    ▼               ▼               ▼          │
+            ┌─────────────┐ ┌─────────────┐ ┌─────────────┐   │
+            │ HR Windows  │ │ BP Windows  │ │Sugar Windows│   │
+            │ (1 min)     │ │ (1 min)     │ │ (10 min)    │   │
+            └──────┬──────┘ └──────┬──────┘ └──────┬──────┘   │
+                   │               │               │          │
+                   └───────────────┼───────────────┘          │
+                                   ▼                          │
+                           ┌──────────────┐                   │
+                           │ JDBC Sink    │───────────────────┘
+                           │ (Alerts +    │
+                           │ Aggregations)│
+                           └──────────────┘
 ```
 
 ## Quick Start
@@ -65,12 +71,15 @@ docker-compose up -d
 ```
 
 This starts Kafka, TimescaleDB, Kafka UI, and Flink (JobManager + TaskManager).
+The `flink-jar-downloader` init container automatically fetches required connector JARs.
 
 ### 2. Install Dependencies
 
 ```bash
 uv venv && uv pip install -r requirements.txt
 ```
+
+> **Note:** PyFlink requires Java 11+. Verify with `java -version`.
 
 ### 3. Run the Simulator
 
@@ -88,13 +97,17 @@ uv run python -m data_pipeline.main --config config/settings.yaml
 
 Open http://localhost:8081 for the data viewer and SQL query interface.
 
-### 5. Run the Stream Processor
+### 5. Run the Stream Processor (PyFlink)
 
 ```bash
+# Default: submits a PyFlink job to the Flink cluster
 uv run python -m flink_processor.main --config config/settings.yaml
+
+# Fallback: standalone Python processor (no Flink cluster needed)
+uv run python -m flink_processor.main --config config/settings.yaml --standalone
 ```
 
-This starts the windowed aggregation processor for health metrics.
+Verify the job is running at the Flink UI: http://localhost:8083
 
 ## Service Ports
 
@@ -141,12 +154,16 @@ See `config/settings.yaml` for all configurable options:
 - Database connection settings
 - Pipeline batch size and flush interval
 - GPS route waypoints
+- **Flink cluster connection and execution mode**
 - **Flink window sizes and alert thresholds**
 
-### Flink Thresholds Configuration
+### Flink Configuration
 
 ```yaml
 flink:
+  execution_mode: "local"          # "local" (mini-cluster) or "remote" (Flink cluster)
+  jobmanager_host: "localhost"
+  jobmanager_port: 8083
   windows:
     heart_rate_minutes: 1
     blood_pressure_minutes: 1
@@ -178,13 +195,20 @@ docker exec -it kafka bin/kafka-console-consumer.sh \
 
 ```sql
 -- 1-minute heart rate aggregations
-SELECT * FROM health_metrics_1min ORDER BY window_start DESC LIMIT 10;
+SELECT * FROM health_metrics_1min
+WHERE metric_type = 'heart_rate'
+ORDER BY time DESC LIMIT 10;
+
+-- 1-minute blood pressure aggregations
+SELECT * FROM health_metrics_1min
+WHERE metric_type = 'blood_pressure'
+ORDER BY time DESC LIMIT 10;
 
 -- 10-minute blood sugar aggregations
-SELECT * FROM health_metrics_10min ORDER BY window_start DESC LIMIT 5;
+SELECT * FROM health_metrics_10min ORDER BY time DESC LIMIT 5;
 
 -- Recent health alerts
-SELECT * FROM health_alerts ORDER BY alert_time DESC LIMIT 20;
+SELECT * FROM health_alerts ORDER BY time DESC LIMIT 20;
 ```
 
 ## Running Tests

@@ -60,6 +60,9 @@ gps_routes:
 # Flink stream processor configuration
 flink:
   enabled: true
+  execution_mode: "local"          # "local" (mini-cluster) or "remote" (Flink cluster)
+  jobmanager_host: "localhost"
+  jobmanager_port: 8083
   consumer_group: "flink-health-processor"
   windows:
     heart_rate_minutes: 1
@@ -70,4 +73,3 @@ flink:
     elevated_bp_systolic: 140     # mmHg
     elevated_bp_diastolic: 90     # mmHg
     elevated_blood_sugar: 180     # mg/dL
-

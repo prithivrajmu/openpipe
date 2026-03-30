@@ -1,5 +1,7 @@
 # OpenPipe
 
+![OpenPipe preview](./docs/github-preview.png)
+
 OpenPipe is a local-first streaming systems playground for simulating device events, moving them through Kafka, processing them with PyFlink, and storing time-series output in TimescaleDB.
 
 It was built as a serious working environment for event-driven systems, not as a toy demo. The goal is to make ingestion, stream processing, observability, and query workflows visible in one place.
